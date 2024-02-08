@@ -5,13 +5,40 @@
 ////
 //// Copyright (c) Microsoft Corporation. All rights reserved
 
-#include "D2DPrintingFromDesktopApps.h"
+#define WINVER 0x0A00 // Windows 10
+#define _WIN32_WINNT 0x0A00 // Windows 10
+
+#include <winrt\base.h>
+#include <winrt\windows.foundation.h>
+#include <winrt\windows.storage.h>
+#include <winrt\windows.data.pdf.h>
+#pragma comment(lib, "windowsapp")
+
+// DirectX header files.
+#include <d2d1_1.h>
+#include <d3d11.h>
+#include <dwrite.h>
+#include <wincodec.h>
+#include <Windows.h>
+#include <WinUser.h>
+
+#include <xpsobjectmodel_1.h>
+#include <DocumentTarget.h>
 
 #include <commdlg.h>
 #include <wchar.h>
 #include <math.h>
 #include <Prntvpt.h>
 #include <Strsafe.h>
+#include <wil\com.h>
+#include <windows.data.pdf.interop.h>
+
+#include "D2DPrintJobChecker.h"
+#include "D2DPrintingFromDesktopApps.h"
+
+using namespace winrt::Windows::Foundation;
+using namespace winrt::Windows::Storage;
+using namespace winrt::Windows::Data::Pdf;
 
 static const FLOAT PAGE_WIDTH_IN_DIPS = 8.5f * 96.0f;     // 8.5 inches
 static const FLOAT PAGE_HEIGHT_IN_DIPS = 11.0f * 96.0f;    // 11 inches
@@ -36,24 +63,15 @@ int WINAPI WinMain(
 		// For this sample, we ignore when this fails and continue running.
 	}
 
-	if (SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)))
-	{
-		{
-			DemoApp app;
+	winrt::init_apartment(winrt::apartment_type::single_threaded);
 
-			if (SUCCEEDED(app.Initialize()))
-			{
-				app.RunMessageLoop();
-			}
-		}
-		CoUninitialize();
-
-		return 0;
-	}
-	else
+	DemoApp app;
+	if (SUCCEEDED(app.Initialize()))
 	{
-		return -1;
+		app.RunMessageLoop();
 	}
+
+	return 0;
 }
 
 // The main window message loop.
@@ -111,6 +129,7 @@ DemoApp::~DemoApp()
 	SafeRelease(&m_gridPatternBrush);
 	SafeRelease(&m_customBitmap);
 	SafeRelease(&m_swapChain);
+	SafeRelease(&m_dxgiDevice);
 	SafeRelease(&m_d2dDevice);
 	SafeRelease(&m_d2dContext);
 
@@ -265,7 +284,7 @@ HRESULT DemoApp::CreateDeviceIndependentResources()
 #endif
 
 		hr = D2D1CreateFactory(
-			D2D1_FACTORY_TYPE_SINGLE_THREADED,
+			D2D1_FACTORY_TYPE_MULTI_THREADED,
 			options,
 			&m_d2dFactory
 		);
@@ -286,7 +305,7 @@ HRESULT DemoApp::CreateDeviceIndependentResources()
 		hr = DWriteCreateFactory(
 			DWRITE_FACTORY_TYPE_SHARED,
 			__uuidof(IDWriteFactory),
-			reinterpret_cast<IUnknown**>(&m_dwriteFactory)
+			reinterpret_cast<::IUnknown**>(&m_dwriteFactory)
 		);
 	}
 	if (SUCCEEDED(hr))
@@ -436,17 +455,16 @@ HRESULT DemoApp::CreateDeviceContext()
 		}
 	}
 
-	IDXGIDevice* dxgiDevice = nullptr;
 	if (SUCCEEDED(hr))
 	{
 		// Get a DXGI device interface from the D3D device.
-		hr = d3dDevice->QueryInterface(&dxgiDevice);
+		hr = d3dDevice->QueryInterface(&m_dxgiDevice);
 	}
 	if (SUCCEEDED(hr))
 	{
 		// Create a D2D device from the DXGI device.
 		hr = m_d2dFactory->CreateDevice(
-			dxgiDevice,
+			m_dxgiDevice,
 			&m_d2dDevice
 		);
 	}
@@ -459,7 +477,6 @@ HRESULT DemoApp::CreateDeviceContext()
 		);
 	}
 
-	SafeRelease(&dxgiDevice);
 	SafeRelease(&d3dDevice);
 	return hr;
 }
@@ -926,75 +943,71 @@ void DemoApp::ToggleMultiPageMode()
 // Called whenever the application begins a print job. Initializes
 // the printing subsystem, draws the scene to a printing device
 // context, and commits the job to the printing subsystem.
-HRESULT DemoApp::OnPrint()
+IAsyncAction DemoApp::OnPrint()
 {
-	HRESULT hr = S_OK;
-
-	if (!m_resourcesValid)
+	try
 	{
-		hr = CreateDeviceResources();
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		// Initialize printing-specific resources and prepare the
-		// printing subsystem for a job.
-		hr = InitializePrintJob();
-	}
-
-	ID2D1DeviceContext* d2dContextForPrint = nullptr;
-	if (SUCCEEDED(hr))
-	{
-		// Create a D2D Device Context dedicated for the print job.
-		hr = m_d2dDevice->CreateDeviceContext(
-			D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
-			&d2dContextForPrint
-		);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		ID2D1CommandList* commandList = nullptr;
-
-		for (INT pageIndex = 1; pageIndex <= (m_multiPageMode ? 2 : 1); pageIndex++)
+		if (!m_resourcesValid)
 		{
-			hr = d2dContextForPrint->CreateCommandList(&commandList);
-
-			// Create, draw, and add a Direct2D Command List for each page.
-			if (SUCCEEDED(hr))
-			{
-				d2dContextForPrint->SetTarget(commandList);
-				hr = DrawToContext(d2dContextForPrint, pageIndex, TRUE);  // TRUE specifies rendering for printing
-				commandList->Close();
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = m_printControl->AddPage(commandList, D2D1::SizeF(m_pageWidth, m_pageHeight), nullptr);
-			}
-
-			SafeRelease(&commandList);
+			winrt::check_hresult(CreateDeviceResources());
 		}
 
-		// Release the print device context.
-		SafeRelease(&d2dContextForPrint);
+		// Initialize printing-specific resources and prepare the
+		// printing subsystem for a job.
+		winrt::check_hresult(InitializePrintJob());
+
+		// Create a D2D Device Context dedicated for the print job.
+		{
+			wil::com_ptr<ID2D1DeviceContext> d2dContextForPrint;
+			winrt::check_hresult(m_d2dDevice->CreateDeviceContext(
+				D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
+				&d2dContextForPrint
+			));
+
+
+			for (INT pageIndex = 1; pageIndex <= (m_multiPageMode ? 2 : 1); pageIndex++)
+			{
+				wil::com_ptr<ID2D1CommandList> commandList;
+				winrt::check_hresult(d2dContextForPrint->CreateCommandList(&commandList));
+
+				// Create, draw, and add a Direct2D Command List for each page.
+				d2dContextForPrint->SetTarget(commandList.get());
+				//hr = DrawToContext(d2dContextForPrint, pageIndex, TRUE);  // TRUE specifies rendering for printing
+
+				StorageFile file = co_await StorageFile::GetFileFromPathAsync(L"C:\\dev\\gitroot\\D2DPrintSample\\D2DPrintSample\\example.pdf");
+				PdfDocument pdfDoc = co_await PdfDocument::LoadFromFileAsync(file);
+				IPdfPage pdfPage = pdfDoc.GetPage(0);
+
+				wil::com_ptr<IPdfRendererNative> pPdfRendererNative;
+				winrt::check_hresult(PdfCreateRenderer(m_dxgiDevice, &pPdfRendererNative));
+
+				d2dContextForPrint->BeginDraw();
+
+				PDF_RENDER_PARAMS renderParams = {}; // You can set additional parameters if needed.
+				winrt::check_hresult(pPdfRendererNative->RenderPageToDeviceContext(winrt::get_unknown(pdfPage), d2dContextForPrint.get(), &renderParams));
+
+				d2dContextForPrint->EndDraw();
+
+				winrt::check_hresult(commandList->Close());
+
+				winrt::check_hresult(m_printControl->AddPage(commandList.get(), D2D1::SizeF(m_pageWidth, m_pageHeight), nullptr));
+			}
+
+			// Release the print device context.
+		}
 
 		// Send the job to the printing subsystem and discard
 		// printing-specific resources.
-		HRESULT hrFinal = FinalizePrintJob();
-
-		if (SUCCEEDED(hr))
-		{
-			hr = hrFinal;
-		}
+		winrt::check_hresult(FinalizePrintJob());
 	}
-
-	if (hr == D2DERR_RECREATE_TARGET)
+	catch (winrt::hresult_error const& hr)
 	{
-		DiscardDeviceResources();
+		if (hr.code() == D2DERR_RECREATE_TARGET)
+		{
+			DiscardDeviceResources();
+		}
+		throw;
 	}
-
-	return hr;
 }
 
 // Brings up a Print Dialog to collect user print

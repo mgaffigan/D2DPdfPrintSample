@@ -7,31 +7,6 @@
 
 #pragma once
 
-// Modify the following defines if you have to target a platform prior to the ones specified below.
-// Refer to MSDN for the latest info on corresponding values for different platforms.
-#define WINVER 0x0A00 // Windows 10
-
-#ifndef _WIN32_WINNT        // Allow use of features specific to Windows 7 or later.
-#define _WIN32_WINNT 0x0A00 // Windows 10
-#endif
-
-#ifndef UNICODE
-#define UNICODE
-#endif
-
-// DirectX header files.
-#include <d2d1_1.h>
-#include <d3d11.h>
-#include <dwrite.h>
-#include <wincodec.h>
-#include <Windows.h>
-#include <WinUser.h>
-
-#include <xpsobjectmodel_1.h>
-#include <DocumentTarget.h>
-
-#include "D2DPrintJobChecker.h"
-
 // SafeRelease inline function.
 template <class Interface> inline void SafeRelease(
     Interface** interfaceToRelease
@@ -86,7 +61,7 @@ private:
 
     HRESULT OnRender();
 
-    HRESULT OnPrint();
+    winrt::Windows::Foundation::IAsyncAction OnPrint();
 
     HRESULT InitializePrintJob();
 
@@ -174,6 +149,7 @@ private:
 
     // Device-dependent resources.
     IDXGISwapChain* m_swapChain;
+    IDXGIDevice* m_dxgiDevice;
     ID2D1Device* m_d2dDevice;
     ID2D1DeviceContext* m_d2dContext;
     ID2D1LinearGradientBrush* m_linearGradientBrush;
