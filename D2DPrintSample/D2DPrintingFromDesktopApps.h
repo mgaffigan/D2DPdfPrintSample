@@ -143,19 +143,12 @@ private:
     ID2D1Factory1* m_d2dFactory;
     IWICImagingFactory2* m_wicFactory;
     IDWriteFactory* m_dwriteFactory;
-    IDWriteTextFormat* m_textFormat;
-    IDWriteTextFormat* m_smallTextFormat;
-    ID2D1PathGeometry* m_pathGeometry;
 
     // Device-dependent resources.
     IDXGISwapChain* m_swapChain;
     IDXGIDevice* m_dxgiDevice;
     ID2D1Device* m_d2dDevice;
     ID2D1DeviceContext* m_d2dContext;
-    ID2D1LinearGradientBrush* m_linearGradientBrush;
-    ID2D1SolidColorBrush* m_blackBrush;
-    ID2D1ImageBrush* m_gridPatternBrush;
-    ID2D1Bitmap* m_customBitmap;
 
     // Printing-specific resources.
     IStream* m_jobPrintTicketStream;

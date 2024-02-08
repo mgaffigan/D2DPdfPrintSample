@@ -99,13 +99,6 @@ DemoApp::DemoApp() :
 	m_swapChain(nullptr),
 	m_d2dDevice(nullptr),
 	m_d2dContext(nullptr),
-	m_textFormat(nullptr),
-	m_smallTextFormat(nullptr),
-	m_pathGeometry(nullptr),
-	m_linearGradientBrush(nullptr),
-	m_blackBrush(nullptr),
-	m_gridPatternBrush(nullptr),
-	m_customBitmap(nullptr),
 	m_jobPrintTicketStream(nullptr),
 	m_printControl(nullptr),
 	m_documentTarget(nullptr),
@@ -118,16 +111,7 @@ DemoApp::DemoApp() :
 // Releases resources.
 DemoApp::~DemoApp()
 {
-	// Release device-independent resources.
-	SafeRelease(&m_textFormat);
-	SafeRelease(&m_smallTextFormat);
-	SafeRelease(&m_pathGeometry);
-
 	// Release device-dependent resources.
-	SafeRelease(&m_linearGradientBrush);
-	SafeRelease(&m_blackBrush);
-	SafeRelease(&m_gridPatternBrush);
-	SafeRelease(&m_customBitmap);
 	SafeRelease(&m_swapChain);
 	SafeRelease(&m_dxgiDevice);
 	SafeRelease(&m_d2dDevice);
@@ -270,8 +254,6 @@ HRESULT DemoApp::CreateDeviceIndependentResources()
 {
 	HRESULT hr = S_OK;
 
-	ID2D1GeometrySink* sink = nullptr;
-
 	if (SUCCEEDED(hr))
 	{
 		// Create a Direct2D factory.
@@ -308,89 +290,6 @@ HRESULT DemoApp::CreateDeviceIndependentResources()
 			reinterpret_cast<::IUnknown**>(&m_dwriteFactory)
 		);
 	}
-	if (SUCCEEDED(hr))
-	{
-		// Create a DirectWrite text format object.
-		hr = m_dwriteFactory->CreateTextFormat(
-			L"Verdana",
-			nullptr,
-			DWRITE_FONT_WEIGHT_NORMAL,
-			DWRITE_FONT_STYLE_NORMAL,
-			DWRITE_FONT_STRETCH_NORMAL,
-			50.0f,
-			L"en-us",
-			&m_textFormat
-		);
-	}
-	if (SUCCEEDED(hr))
-	{
-		// Center the text horizontally.
-		hr = m_textFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
-	}
-	if (SUCCEEDED(hr))
-	{
-		// Center the text vertically.
-		hr = m_textFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-	}
-	if (SUCCEEDED(hr))
-	{
-		// Create a second DirectWrite text format for the multi-page text
-		hr = m_dwriteFactory->CreateTextFormat(
-			L"Verdana",
-			nullptr,
-			DWRITE_FONT_WEIGHT_NORMAL,
-			DWRITE_FONT_STYLE_NORMAL,
-			DWRITE_FONT_STRETCH_NORMAL,
-			12.0f,
-			L"en-us",
-			&m_smallTextFormat
-		);
-	}
-
-	// Create a path geometry for an hourglass shape.
-	if (SUCCEEDED(hr))
-	{
-		// Create a path geometry.
-		hr = m_d2dFactory->CreatePathGeometry(&m_pathGeometry);
-	}
-	if (SUCCEEDED(hr))
-	{
-		// Use the geometry sink to write to the path geometry.
-		hr = m_pathGeometry->Open(&sink);
-	}
-	if (SUCCEEDED(hr))
-	{
-		// Write an hourglass shape to the geometry.
-		sink->SetFillMode(D2D1_FILL_MODE_ALTERNATE);
-
-		sink->BeginFigure(
-			D2D1::Point2F(0.0f, 0.0f),
-			D2D1_FIGURE_BEGIN_FILLED
-		);
-
-		sink->AddLine(D2D1::Point2F(HOURGLASS_SIZE, 0.0f));
-
-		sink->AddBezier(
-			D2D1::BezierSegment(
-				D2D1::Point2F(HOURGLASS_SIZE / 4.0f * 3.0f, HOURGLASS_SIZE / 4.0f),
-				D2D1::Point2F(HOURGLASS_SIZE / 4.0f * 3.0f, HOURGLASS_SIZE / 4.0f * 3.0f),
-				D2D1::Point2F(HOURGLASS_SIZE, HOURGLASS_SIZE))
-		);
-
-		sink->AddLine(D2D1::Point2F(0.0f, HOURGLASS_SIZE));
-
-		sink->AddBezier(
-			D2D1::BezierSegment(
-				D2D1::Point2F(HOURGLASS_SIZE / 4.0f, HOURGLASS_SIZE / 4.0f * 3.0f),
-				D2D1::Point2F(HOURGLASS_SIZE / 4.0f, HOURGLASS_SIZE / 4.0f),
-				D2D1::Point2F(0.0f, 0.0f))
-		);
-
-		sink->EndFigure(D2D1_FIGURE_END_CLOSED);
-
-		hr = sink->Close();
-	}
-	SafeRelease(&sink);
 
 	return hr;
 }
@@ -531,59 +430,6 @@ HRESULT DemoApp::CreateDeviceResources()
 		}
 		if (SUCCEEDED(hr))
 		{
-			// Create a black brush.
-			hr = m_d2dContext->CreateSolidColorBrush(
-				D2D1::ColorF(D2D1::ColorF::Black),
-				&m_blackBrush
-			);
-		}
-		// Create a linear gradient for the hourglasses.
-		ID2D1GradientStopCollection* gradientStops = nullptr;
-		if (SUCCEEDED(hr))
-		{
-			static const D2D1_GRADIENT_STOP stops[] =
-			{
-				{ 0.f, { 0.f, 1.f, 1.f, 0.25f } },
-				{ 1.f, { 0.f, 0.f, 1.f, 1.f } },
-			};
-
-			hr = m_d2dContext->CreateGradientStopCollection(
-				stops,
-				ARRAYSIZE(stops),
-				&gradientStops
-			);
-		}
-		if (SUCCEEDED(hr))
-		{
-			hr = m_d2dContext->CreateLinearGradientBrush(
-				D2D1::LinearGradientBrushProperties(
-					D2D1::Point2F(HOURGLASS_SIZE / 2, 0),
-					D2D1::Point2F(HOURGLASS_SIZE / 2, HOURGLASS_SIZE)),
-				D2D1::BrushProperties(),
-				gradientStops,
-				&m_linearGradientBrush
-			);
-		}
-		SafeRelease(&gradientStops);
-		if (SUCCEEDED(hr))
-		{
-			// Create a bitmap by loading it from a file.
-			hr = LoadBitmapFromFile(
-				m_d2dContext,
-				m_wicFactory,
-				L".\\sampleImage.jpg",
-				100,
-				0,
-				&m_customBitmap
-			);
-		}
-		if (SUCCEEDED(hr))
-		{
-			// Create a brush to use for the gridded background.
-			hr = CreateGridPatternBrush(&m_gridPatternBrush);
-		}
-		if (SUCCEEDED(hr))
-		{
 			ResetScrollBar();
 		}
 
@@ -677,11 +523,6 @@ void DemoApp::DiscardDeviceResources()
 	SafeRelease(&m_d2dDevice);
 	SafeRelease(&m_d2dContext);
 
-	SafeRelease(&m_customBitmap);
-	SafeRelease(&m_blackBrush);
-	SafeRelease(&m_linearGradientBrush);
-	SafeRelease(&m_gridPatternBrush);
-
 	m_resourcesValid = false;
 }
 
@@ -695,187 +536,7 @@ HRESULT DemoApp::DrawToContext(
 	BOOL printing
 )
 {
-	HRESULT hr = S_OK;
-
-	// Get the size of the displayed window.
-	D2D1_SIZE_U windowSize = CalculateD2DWindowSize();
-
-	// Compute the margin sizes.
-	FLOAT margin = PAGE_MARGIN_IN_DIPS;
-
-	// Get the size of the destination context ("page").
-	D2D1_SIZE_F targetSize = { 0 };
-	if (printing)
-	{
-		targetSize.width = m_pageWidth - 2 * margin;
-		targetSize.height = m_pageHeight - 2 * margin;
-	}
-	else
-	{
-		targetSize.width = static_cast<FLOAT>(windowSize.width);  // assuming both in DIPs
-		targetSize.height = static_cast<FLOAT>(windowSize.height);
-	}
-
-	// Compute the size of the gridded background rectangle.
-	D2D1_SIZE_F frameSize = D2D1::SizeF(
-		targetSize.width,
-		FRAME_HEIGHT_IN_DIPS
-	);
-
-	// Compute the translation matrix that simulates scrolling or printing.
-	D2D1_MATRIX_3X2_F scrollTransform = printing ?
-		D2D1::Matrix3x2F::Translation(margin, margin) :
-		D2D1::Matrix3x2F::Translation(0.0f, static_cast<FLOAT>(-m_currentScrollPosition));
-
-	d2dContext->BeginDraw();
-
-	d2dContext->SetTransform(scrollTransform);
-
-	d2dContext->Clear(D2D1::ColorF(D2D1::ColorF::White));
-
-	if (!printing || pageNumber == 1)
-	{
-		// Display geometries and text on screen. In printing case, display only on page 1.
-
-		// Paint a grid background
-		d2dContext->FillRectangle(
-			D2D1::RectF(0.0f, 0.0f, frameSize.width, frameSize.height),
-			m_gridPatternBrush
-		);
-
-		// Draw a bitmap in the upper-left corner of the window.
-		D2D1_SIZE_F bitmapSize = m_customBitmap->GetSize();
-		d2dContext->DrawBitmap(
-			m_customBitmap,
-			D2D1::RectF(0.0f, 0.0f, bitmapSize.width, bitmapSize.height)
-		);
-
-		// Draw a bitmap at the lower-right corner of the window.
-		d2dContext->DrawBitmap(
-			m_customBitmap,
-			D2D1::RectF(
-				frameSize.width - bitmapSize.width,
-				frameSize.height - bitmapSize.height,
-				frameSize.width,
-				frameSize.height
-			)
-		);
-
-		// Draw the rotated "Hello world" message.
-		D2D1_MATRIX_3X2_F sidewaysTransform = D2D1::Matrix3x2F::Rotation(
-			45,
-			D2D1::Point2F(
-				frameSize.width / 2,
-				frameSize.height / 2
-			)
-		);
-
-		d2dContext->SetTransform(sidewaysTransform * scrollTransform);
-
-		static const WCHAR helloString[] = L"Hello, World!";
-
-		d2dContext->DrawText(
-			helloString,
-			ARRAYSIZE(helloString) - 1,
-			m_textFormat,
-			D2D1::RectF(
-				0.0f,
-				0.0f,
-				frameSize.width,
-				frameSize.height
-			),
-			m_blackBrush
-		);
-
-		// Draw the hour glass in the bottom-left.
-		D2D1_MATRIX_3X2_F hourglassTransform = D2D1::Matrix3x2F::Translation(0.0f, frameSize.height - HOURGLASS_SIZE);
-
-		d2dContext->SetTransform(hourglassTransform * scrollTransform);
-
-		d2dContext->FillGeometry(
-			m_pathGeometry,
-			m_linearGradientBrush
-		);
-
-		// Draw the hour glass in the upper-right.
-		hourglassTransform = D2D1::Matrix3x2F::Translation(frameSize.width - HOURGLASS_SIZE, 0.0f);
-
-		d2dContext->SetTransform(hourglassTransform * scrollTransform);
-
-		d2dContext->FillGeometry(
-			m_pathGeometry,
-			m_linearGradientBrush
-		);
-	}
-
-	if (m_multiPageMode)
-	{
-		static const WCHAR longString[] = L"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Phasellus tincidunt elementum diam. Sed semper ligula nec orci egestas sit amet tincidunt risus vulputate. Aliquam tempus quam nec neque facilisis vestibulum tristique est condimentum. Vestibulum ultrices tortor quis sapien dapibus non laoreet nunc posuere. Nullam semper, mi et consectetur mollis, dui ante vestibulum quam, quis fringilla diam purus nec urna. Nullam justo odio, posuere sed fringilla rutrum, ornare ac metus. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum bibendum rutrum pharetra. Suspendisse eros est, porta ut adipiscing sed, rutrum quis augue. Ut lacinia, mi sit amet pretium dapibus, velit est scelerisque odio, ac viverra augue enim at eros. Donec consectetur, purus a ullamcorper venenatis, risus libero placerat ligula, et rutrum est justo at orci. Fusce fringilla tristique iaculis. Nulla facilisi. Maecenas et libero augue, sit amet luctus nisl.\r\n\r\nPellentesque ac est ac est mattis venenatis vitae sit amet ligula. Proin pharetra erat vel urna sagittis sed tincidunt est feugiat. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Sed vitae eleifend massa. In ac orci turpis. Nam in erat nunc, vel rhoncus mauris. Ut fermentum, urna ac commodo tincidunt, orci enim consequat sem, ut fringilla enim quam non diam. Proin et ipsum nisi, sit amet ultricies nulla. Suspendisse eu dolor metus, ac consectetur ligula. Maecenas at est ligula.\r\n\r\nMauris sagittis, ligula sit amet vestibulum facilisis, lacus lorem porta neque, nec tristique leo mi vestibulum erat. Cras luctus sollicitudin nulla sed egestas. Aenean pellentesque suscipit sapien, vitae mollis sapien vehicula et. Proin feugiat leo et nulla porttitor facilisis. Nullam a lacus lorem. Praesent vitae mi dui, sit amet placerat mauris. Maecenas iaculis lacinia tellus sit amet egestas. Nam a metus orci. Cras non neque eget massa hendrerit accumsan a a tortor. Phasellus lacinia enim quam. Phasellus tristique suscipit nibh, sed molestie orci eleifend sed. Praesent lobortis tortor non mi ultrices euismod ut ac lectus. Quisque laoreet facilisis diam quis aliquam. Phasellus at quam non felis pretium mollis. Fusce vel posuere ipsum. Sed gravida tortor justo, ac volutpat velit.\r\n\r\nLorem ipsum dolor sit amet, consectetur adipiscing elit. Cras vitae convallis ipsum. Aliquam mauris dui, imperdiet eget porttitor ac, bibendum ac sapien. Praesent ut dignissim sem. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nulla id sapien facilisis nisi tristique venenatis. Donec vitae mauris sem. Sed condimentum erat tortor, sit amet commodo nibh. Nam euismod, magna et cursus auctor, enim dui condimentum felis, at aliquet ligula tellus ac est. Aenean viverra, urna at adipiscing dignissim, diam dui blandit sem, varius mollis enim ante sit amet ante. Curabitur lobortis condimentum odio non ultricies. Maecenas lorem elit, laoreet ut semper vel, egestas vel ipsum. Etiam adipiscing facilisis libero, sit amet placerat nisi aliquam id. Vestibulum fermentum quam a nisl semper gravida. Aliquam vestibulum interdum turpis. Pellentesque nunc nulla, aliquam vel consequat eu, aliquam vitae justo. Praesent iaculis, urna at ullamcorper placerat, neque lacus accumsan velit, eu mollis lacus leo nec nisl. Nulla massa risus, tincidunt vitae rhoncus et, feugiat a turpis. Phasellus orci quam, ultricies eu sollicitudin vel, vulputate eu lectus. Etiam quis velit ipsum, in rhoncus justo.";
-		static const UINT totalChars = ARRAYSIZE(longString) - 1;
-		static const UINT numberOfCharsFirstPage = 955;
-
-		d2dContext->SetTransform(scrollTransform);
-
-		if (printing)
-		{
-			// Lay out the text in parts, some on the first page, after
-			// the gridded rectangle, then some on the second page.
-			// A real application would contain much more robust layout logic.
-			// Here we simply render the first 955 characters on the first page and
-			// the remaining characters on the second page.
-
-			if (pageNumber == 1)
-			{
-				d2dContext->DrawText(
-					longString,
-					numberOfCharsFirstPage,
-					m_smallTextFormat,
-					D2D1::RectF(
-						0.0f,
-						frameSize.height + 5.0f,
-						frameSize.width,
-						targetSize.height
-					),
-					m_blackBrush
-				);
-			}
-			else if (pageNumber == 2)
-			{
-				d2dContext->DrawText(
-					longString + numberOfCharsFirstPage,
-					totalChars - numberOfCharsFirstPage,
-					m_smallTextFormat,
-					D2D1::RectF(
-						0.0f,
-						0.0f,
-						frameSize.width,
-						targetSize.height
-					),
-					m_blackBrush
-				);
-			}
-		}
-		else
-		{
-			// Lay out the text in a single, long rectangle.
-			d2dContext->DrawText(
-				longString,
-				totalChars,
-				m_smallTextFormat,
-				D2D1::RectF(
-					0.0f,
-					frameSize.height + 5.0f,
-					targetSize.width,
-					targetSize.height
-				),
-				m_blackBrush
-			);
-		}
-	}
-
-	hr = d2dContext->EndDraw();
-
-	return hr;
+	return S_OK;
 }
 
 
