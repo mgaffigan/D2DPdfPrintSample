@@ -5,6 +5,8 @@ VisualStudioVersion = 17.7.34031.279
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "D2DPrintSample", "D2DPrintSample\D2DPrintSample.vcxproj", "{1DE133DE-C5B1-4A17-870B-ACEEA1197B8F}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PrintPdf", "PrintPdf\PrintPdf.vcxproj", "{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -21,6 +23,14 @@ Global
 		{1DE133DE-C5B1-4A17-870B-ACEEA1197B8F}.Release|x64.Build.0 = Release|x64
 		{1DE133DE-C5B1-4A17-870B-ACEEA1197B8F}.Release|x86.ActiveCfg = Release|Win32
 		{1DE133DE-C5B1-4A17-870B-ACEEA1197B8F}.Release|x86.Build.0 = Release|Win32
+		{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}.Debug|x64.ActiveCfg = Debug|x64
+		{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}.Debug|x64.Build.0 = Debug|x64
+		{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}.Debug|x86.ActiveCfg = Debug|Win32
+		{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}.Debug|x86.Build.0 = Debug|Win32
+		{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}.Release|x64.ActiveCfg = Release|x64
+		{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}.Release|x64.Build.0 = Release|x64
+		{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}.Release|x86.ActiveCfg = Release|Win32
+		{79D99A24-8EA8-46EC-A08B-0DF4BCFB9D52}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

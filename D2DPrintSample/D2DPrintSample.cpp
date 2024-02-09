@@ -90,15 +90,9 @@ void DemoApp::RunMessageLoop()
 DemoApp::DemoApp() :
 	m_resourcesValid(false),
 	m_parentHwnd(nullptr),
-	m_d2dHwnd(nullptr),
-	m_multiPageMode(TRUE),
-	m_currentScrollPosition(0),
 	m_d2dFactory(nullptr),
 	m_wicFactory(nullptr),
-	m_dwriteFactory(nullptr),
-	m_swapChain(nullptr),
 	m_d2dDevice(nullptr),
-	m_d2dContext(nullptr),
 	m_jobPrintTicketStream(nullptr),
 	m_printControl(nullptr),
 	m_documentTarget(nullptr),
@@ -112,10 +106,8 @@ DemoApp::DemoApp() :
 DemoApp::~DemoApp()
 {
 	// Release device-dependent resources.
-	SafeRelease(&m_swapChain);
 	SafeRelease(&m_dxgiDevice);
 	SafeRelease(&m_d2dDevice);
-	SafeRelease(&m_d2dContext);
 
 	// Release printing-specific resources.
 	SafeRelease(&m_jobPrintTicketStream);
@@ -126,7 +118,6 @@ DemoApp::~DemoApp()
 	// Release factories.
 	SafeRelease(&m_d2dFactory);
 	SafeRelease(&m_wicFactory);
-	SafeRelease(&m_dwriteFactory);
 }
 
 // Creates the application window and initializes
@@ -179,56 +170,10 @@ HRESULT DemoApp::Initialize()
 		}
 	}
 
-	if (SUCCEEDED(hr))
-	{
-		// Register the child window class (for D2D content).
-		WNDCLASSEX wcex = { sizeof(WNDCLASSEX) };
-		wcex.style = CS_HREDRAW | CS_VREDRAW;
-		wcex.lpfnWndProc = DemoApp::ChildWndProc;
-		wcex.cbClsExtra = 0;
-		wcex.cbWndExtra = sizeof(LONG_PTR);
-		wcex.hInstance = HINST_THISCOMPONENT;
-		wcex.hCursor = LoadCursor(nullptr, IDC_ARROW);
-		wcex.hbrBackground = nullptr;
-		wcex.lpszMenuName = nullptr;
-		wcex.lpszClassName = L"D2DDemoApp";
-
-		RegisterClassEx(&wcex);
-
-		D2D1_SIZE_U d2dWindowSize = CalculateD2DWindowSize();
-
-		// Create the child window.
-		m_d2dHwnd = CreateWindow(
-			L"D2DDemoApp",
-			L"",
-			WS_CHILDWINDOW | WS_VISIBLE,
-			0,
-			0,
-			d2dWindowSize.width,
-			d2dWindowSize.height,
-			m_parentHwnd,
-			nullptr,
-			HINST_THISCOMPONENT,
-			this
-		);
-
-		hr = m_d2dHwnd ? S_OK : E_FAIL;
-	}
-
 	// Create D2D device context and device-dependent resources.
 	if (SUCCEEDED(hr))
 	{
 		hr = CreateDeviceResources();
-	}
-
-	if (FAILED(hr))
-	{
-		MessageBox(
-			m_d2dHwnd,
-			L"Failed to initialize the application. Sample will exit.",
-			L"Sample initialization error",
-			MB_OK | MB_ICONSTOP
-		);
 	}
 
 	return hr;
@@ -281,15 +226,6 @@ HRESULT DemoApp::CreateDeviceIndependentResources()
 			IID_PPV_ARGS(&m_wicFactory)
 		);
 	}
-	if (SUCCEEDED(hr))
-	{
-		// Create a DirectWrite factory.
-		hr = DWriteCreateFactory(
-			DWRITE_FACTORY_TYPE_SHARED,
-			__uuidof(IDWriteFactory),
-			reinterpret_cast<::IUnknown**>(&m_dwriteFactory)
-		);
-	}
 
 	return hr;
 }
@@ -316,24 +252,10 @@ HRESULT DemoApp::CreateDeviceContext()
 	};
 	UINT countOfDriverTypes = ARRAYSIZE(driverTypes);
 
-	DXGI_SWAP_CHAIN_DESC swapDescription;
-	ZeroMemory(&swapDescription, sizeof(swapDescription));
-	swapDescription.BufferDesc.Width = size.width;
-	swapDescription.BufferDesc.Height = size.height;
-	swapDescription.BufferDesc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-	swapDescription.BufferDesc.RefreshRate.Numerator = 60;
-	swapDescription.BufferDesc.RefreshRate.Denominator = 1;
-	swapDescription.SampleDesc.Count = 1;
-	swapDescription.SampleDesc.Quality = 0;
-	swapDescription.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapDescription.BufferCount = 1;
-	swapDescription.OutputWindow = m_d2dHwnd;
-	swapDescription.Windowed = TRUE;
-
 	ID3D11Device* d3dDevice = nullptr;
 	for (UINT driverTypeIndex = 0; driverTypeIndex < countOfDriverTypes; driverTypeIndex++)
 	{
-		hr = D3D11CreateDeviceAndSwapChain(
+		hr = D3D11CreateDevice(
 			nullptr,       // use default adapter
 			driverTypes[driverTypeIndex],
 			nullptr,       // no external software rasterizer
@@ -341,8 +263,6 @@ HRESULT DemoApp::CreateDeviceContext()
 			nullptr,       // use default set of feature levels
 			0,
 			D3D11_SDK_VERSION,
-			&swapDescription,
-			&m_swapChain,
 			&d3dDevice,
 			nullptr,       // do not care about what feature level is chosen
 			nullptr        // do not retain D3D device context
@@ -367,14 +287,6 @@ HRESULT DemoApp::CreateDeviceContext()
 			&m_d2dDevice
 		);
 	}
-	if (SUCCEEDED(hr))
-	{
-		// Create a device context from the D2D device.
-		hr = m_d2dDevice->CreateDeviceContext(
-			D2D1_DEVICE_CONTEXT_OPTIONS_NONE,
-			&m_d2dContext
-		);
-	}
 
 	SafeRelease(&d3dDevice);
 	return hr;
@@ -394,47 +306,6 @@ HRESULT DemoApp::CreateDeviceResources()
 	if (!m_resourcesValid)
 	{
 		hr = CreateDeviceContext();
-
-		IDXGISurface* surface = nullptr;
-		if (SUCCEEDED(hr))
-		{
-			// Get a surface from the swap chain.
-			hr = m_swapChain->GetBuffer(
-				0,
-				IID_PPV_ARGS(&surface)
-			);
-		}
-		ID2D1Bitmap1* bitmap = nullptr;
-		if (SUCCEEDED(hr))
-		{
-			// Create a bitmap pointing to the surface.
-			D2D1_BITMAP_PROPERTIES1 properties = D2D1::BitmapProperties1(
-				D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-				D2D1::PixelFormat(
-					DXGI_FORMAT_B8G8R8A8_UNORM,
-					D2D1_ALPHA_MODE_IGNORE
-				),
-				96, 96
-			);
-
-			hr = m_d2dContext->CreateBitmapFromDxgiSurface(
-				surface,
-				&properties,
-				&bitmap
-			);
-		}
-		if (SUCCEEDED(hr))
-		{
-			// Set the bitmap as the target of our device context.
-			m_d2dContext->SetTarget(bitmap);
-		}
-		if (SUCCEEDED(hr))
-		{
-			ResetScrollBar();
-		}
-
-		SafeRelease(&bitmap);
-		SafeRelease(&surface);
 	}
 
 	if (FAILED(hr))
@@ -456,62 +327,6 @@ HRESULT DemoApp::CreateGridPatternBrush(
 )
 {
 	HRESULT hr = S_OK;
-
-	ID2D1CommandList* gridCommandList = nullptr;
-	if (SUCCEEDED(hr))
-	{
-		// Create a command list that will store the grid pattern.
-		hr = m_d2dContext->CreateCommandList(&gridCommandList);
-	}
-	ID2D1SolidColorBrush* gridBrush = nullptr;
-	if (SUCCEEDED(hr))
-	{
-		// Create a brush with which to draw the grid pattern.
-		hr = m_d2dContext->CreateSolidColorBrush(
-			D2D1::ColorF(D2D1::ColorF(0.93f, 0.94f, 0.96f, 1.0f)),
-			&gridBrush
-		);
-	}
-	ID2D1Image* originalTarget = nullptr;
-	if (SUCCEEDED(hr))
-	{
-		// Save the context's current target.
-		m_d2dContext->GetTarget(&originalTarget);
-
-		// Put the new target in place.
-		m_d2dContext->SetTarget(gridCommandList);
-
-		// Draw the grid pattern on the new target.
-		m_d2dContext->BeginDraw();
-		m_d2dContext->FillRectangle(D2D1::RectF(0.0f, 0.0f, 10.0f, 1.0f), gridBrush);
-		m_d2dContext->FillRectangle(D2D1::RectF(0.0f, 0.1f, 1.0f, 10.0f), gridBrush);
-		hr = m_d2dContext->EndDraw();
-
-		// Restore the original target.
-		m_d2dContext->SetTarget(originalTarget);
-	}
-	if (SUCCEEDED(hr))
-	{
-		hr = gridCommandList->Close();
-	}
-	if (SUCCEEDED(hr))
-	{
-		// Create image brush with the grid command list.
-		hr = m_d2dContext->CreateImageBrush(
-			gridCommandList,
-			D2D1::ImageBrushProperties(
-				D2D1::RectF(0, 0, 10, 10),
-				D2D1_EXTEND_MODE_WRAP,
-				D2D1_EXTEND_MODE_WRAP
-			),
-			imageBrush
-		);
-	}
-
-	SafeRelease(&gridBrush);
-	SafeRelease(&originalTarget);
-	SafeRelease(&gridCommandList);
-
 	return hr;
 }
 
@@ -519,9 +334,7 @@ HRESULT DemoApp::CreateGridPatternBrush(
 // when a Direct3D device is lost.
 void DemoApp::DiscardDeviceResources()
 {
-	SafeRelease(&m_swapChain);
 	SafeRelease(&m_d2dDevice);
-	SafeRelease(&m_d2dContext);
 
 	m_resourcesValid = false;
 }
@@ -555,27 +368,6 @@ HRESULT DemoApp::OnRender()
 		hr = CreateDeviceResources();
 	}
 
-	if (SUCCEEDED(hr))
-	{
-		// Render the scene on the device context tied to
-		// the swap chain (i.e. to the screen).
-		hr = DrawToContext(m_d2dContext, 1, FALSE); // FALSE specifies drawing to screen.
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		// Present the swap chain immediately
-		hr = m_swapChain->Present(0, 0);
-	}
-
-	if (hr == D2DERR_RECREATE_TARGET || hr == DXGI_ERROR_DEVICE_REMOVED)
-	{
-		hr = S_OK;
-		// Recreate device resources then force repaint.
-		DiscardDeviceResources();
-		InvalidateRect(m_d2dHwnd, nullptr, FALSE);
-	}
-
 	return hr;
 }
 
@@ -597,8 +389,6 @@ void DemoApp::OnChar(SHORT key)
 // Switches the application between single-page and multi-page mode.
 void DemoApp::ToggleMultiPageMode()
 {
-	m_multiPageMode = !m_multiPageMode;
-	InvalidateRect(m_d2dHwnd, nullptr, FALSE);
 }
 
 // Called whenever the application begins a print job. Initializes
@@ -626,7 +416,7 @@ IAsyncAction DemoApp::OnPrint()
 			));
 
 
-			for (INT pageIndex = 1; pageIndex <= (m_multiPageMode ? 2 : 1); pageIndex++)
+			for (INT pageIndex = 1; pageIndex <= 1; pageIndex++)
 			{
 				wil::com_ptr<ID2D1CommandList> commandList;
 				winrt::check_hresult(d2dContextForPrint->CreateCommandList(&commandList));
@@ -911,73 +701,6 @@ HRESULT DemoApp::FinalizePrintJob()
 // the swap chain with buffers sized to the new window.
 void DemoApp::OnResize()
 {
-	if (m_d2dContext)
-	{
-		HRESULT hr = S_OK;
-
-		D2D1_SIZE_U newSize = CalculateD2DWindowSize();
-
-		// Resize the child window.
-		MoveWindow(m_d2dHwnd, 0, 0, newSize.width, newSize.height, FALSE);
-
-		// Remove the bitmap from rendering device context.
-		m_d2dContext->SetTarget(nullptr);
-
-		// Resize the swap chain.
-		if (SUCCEEDED(hr))
-		{
-			hr = m_swapChain->ResizeBuffers(
-				0,
-				newSize.width,
-				newSize.height,
-				DXGI_FORMAT_B8G8R8A8_UNORM,
-				0
-			);
-		}
-
-		// Get a surface from the swap chain.
-		IDXGISurface* surface = nullptr;
-		if (SUCCEEDED(hr))
-		{
-			hr = m_swapChain->GetBuffer(
-				0,
-				IID_PPV_ARGS(&surface)
-			);
-		}
-
-		// Create a bitmap pointing to the surface.
-		ID2D1Bitmap1* bitmap = nullptr;
-		if (SUCCEEDED(hr))
-		{
-			D2D1_BITMAP_PROPERTIES1 properties = D2D1::BitmapProperties1(
-				D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
-				D2D1::PixelFormat(
-					DXGI_FORMAT_B8G8R8A8_UNORM,
-					D2D1_ALPHA_MODE_IGNORE
-				),
-				96, 96
-			);
-			hr = m_d2dContext->CreateBitmapFromDxgiSurface(
-				surface,
-				&properties,
-				&bitmap
-			);
-		}
-
-		// Set bitmap back onto device context.
-		if (SUCCEEDED(hr))
-		{
-			m_d2dContext->SetTarget(bitmap);
-		}
-
-		SafeRelease(&bitmap);
-		SafeRelease(&surface);
-
-		ResetScrollBar();
-
-		// Force a repaint.
-		InvalidateRect(m_d2dHwnd, nullptr, FALSE);
-	}
 }
 
 // The window message handler for the parent window.
@@ -1259,106 +982,18 @@ HRESULT DemoApp::LoadBitmapFromFile(
 // reveal a higher or lower section of the scene.
 void DemoApp::OnVScroll(WPARAM wParam, LPARAM /* lParam */)
 {
-	INT newScrollPosition = m_currentScrollPosition;
-
-	switch (LOWORD(wParam))
-	{
-	case SB_LINEUP:
-		newScrollPosition -= 5;
-		break;
-
-	case SB_LINEDOWN:
-		newScrollPosition += 5;
-		break;
-
-	case SB_PAGEUP:
-		newScrollPosition -= static_cast<UINT>(m_d2dContext->GetSize().height);
-		break;
-
-	case SB_PAGEDOWN:
-		newScrollPosition += static_cast<UINT>(m_d2dContext->GetSize().height);
-		break;
-
-	case SB_THUMBTRACK:
-	{
-		SCROLLINFO scrollInfo = { 0 };
-		scrollInfo.fMask = SIF_PAGE | SIF_POS | SIF_RANGE | SIF_TRACKPOS;
-		BOOL succeeded = GetScrollInfo(m_parentHwnd, SB_VERT, &scrollInfo);
-		if (!succeeded)
-		{
-			Assert(succeeded);
-			return;
-		}
-		newScrollPosition = scrollInfo.nTrackPos;
-	}
-	break;
-
-	default:
-		break;
-	}
-
-	newScrollPosition = max(0, min(newScrollPosition, static_cast<INT>(m_scrollRange) - static_cast<INT>(m_d2dContext->GetSize().height)));
-
-	m_currentScrollPosition = newScrollPosition;
-
-	SCROLLINFO scrollInfo = { 0 };
-	scrollInfo.fMask = SIF_PAGE | SIF_POS | SIF_RANGE | SIF_TRACKPOS;
-	BOOL succeeded = GetScrollInfo(m_parentHwnd, SB_VERT, &scrollInfo);
-	if (!succeeded)
-	{
-		Assert(succeeded);
-		return;
-	}
-
-	if (m_currentScrollPosition != scrollInfo.nPos)
-	{
-		scrollInfo.nPos = m_currentScrollPosition;
-		SetScrollInfo(m_parentHwnd, SB_VERT, &scrollInfo, TRUE);
-
-		InvalidateRect(m_d2dHwnd, nullptr, FALSE);
-	}
 }
 
 // Called when the mouse wheel is moved. Adjusts the application's
 // scroll position.
 void DemoApp::OnMouseWheel(WPARAM wParam, LPARAM /* lParam */)
 {
-	m_currentScrollPosition -= GET_WHEEL_DELTA_WPARAM(wParam);
-	m_currentScrollPosition = max(0, min(m_currentScrollPosition, static_cast<INT>(m_scrollRange) - static_cast<INT>(m_d2dContext->GetSize().height)));
-
-	SCROLLINFO scrollInfo = { 0 };
-	scrollInfo.fMask = SIF_PAGE | SIF_POS | SIF_RANGE | SIF_TRACKPOS;
-	BOOL succeeded = GetScrollInfo(m_parentHwnd, SB_VERT, &scrollInfo);
-	if (!succeeded)
-	{
-		Assert(succeeded);
-		return;
-	}
-
-	if (m_currentScrollPosition != scrollInfo.nPos)
-	{
-		scrollInfo.nPos = m_currentScrollPosition;
-		SetScrollInfo(m_parentHwnd, SB_VERT, &scrollInfo, TRUE);
-
-		InvalidateRect(m_d2dHwnd, nullptr, FALSE);
-	}
 }
 
 // Resets the scroll bar to represent the current size of the
 // application window and the current scroll position.
 void DemoApp::ResetScrollBar()
 {
-	INT scrollPos = static_cast<INT>(m_scrollRange - m_d2dContext->GetSize().height + 0.5);
-	m_currentScrollPosition = max(0, min(m_currentScrollPosition, scrollPos));
-
-	SCROLLINFO scrollInfo = { 0 };
-	scrollInfo.cbSize = sizeof(scrollInfo);
-	scrollInfo.fMask = SIF_DISABLENOSCROLL | SIF_PAGE | SIF_POS | SIF_RANGE;
-	scrollInfo.nMin = 0;
-	scrollInfo.nMax = m_scrollRange;
-	scrollInfo.nPage = static_cast<UINT>(m_d2dContext->GetSize().height);
-	scrollInfo.nPos = m_currentScrollPosition;
-	SetScrollInfo(m_parentHwnd, SB_VERT, &scrollInfo, TRUE);
 }
 
 // Close the sample window after checking print job status.
@@ -1372,7 +1007,7 @@ LRESULT DemoApp::OnClose()
 		if (status.Completion == PrintDocumentPackageCompletion_InProgress)
 		{
 			int selection = MessageBox(
-				m_d2dHwnd,
+				0,
 				L"Print job still in progress.\nYES to force to exit;\nNO to exit after print job is complete;\nCANCEL to return to sample.",
 				L"Sample exit error",
 				MB_YESNOCANCEL | MB_ICONSTOP
@@ -1402,7 +1037,6 @@ LRESULT DemoApp::OnClose()
 
 	if (close)
 	{
-		DestroyWindow(m_d2dHwnd);
 		DestroyWindow(m_parentHwnd);
 	}
 

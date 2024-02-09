@@ -131,24 +131,14 @@ private:
     bool m_resourcesValid;                      // Whether or not the device-dependent resources are ready to use.
 
     HWND m_parentHwnd;                          // The outer window containing the scroll bar and inner window.
-    HWND m_d2dHwnd;                             // The inner window onto which D2D renders.
-    bool m_multiPageMode;                       // Whether or not the application is currently in multi-page mode.
-    static const UINT m_scrollRange = 1100;     // The maximum distance the user is allowed to scroll.
-
-    // The current distance between the top of the scene and the top
-    // of the displayed rectangle.
-    INT m_currentScrollPosition;
-
+    
     // Device-independent resources.
     ID2D1Factory1* m_d2dFactory;
     IWICImagingFactory2* m_wicFactory;
-    IDWriteFactory* m_dwriteFactory;
 
     // Device-dependent resources.
-    IDXGISwapChain* m_swapChain;
     IDXGIDevice* m_dxgiDevice;
     ID2D1Device* m_d2dDevice;
-    ID2D1DeviceContext* m_d2dContext;
 
     // Printing-specific resources.
     IStream* m_jobPrintTicketStream;
