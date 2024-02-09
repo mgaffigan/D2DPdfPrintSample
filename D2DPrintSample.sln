@@ -9,6 +9,12 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "PrintPdf", "PrintPdf\PrintP
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PrintPdfManaged", "PrintPdfManaged\PrintPdfManaged.csproj", "{40D957A9-6923-4A2B-8829-2E1B395A0B43}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{D6EC8E98-6421-4DC3-9973-5BDC4EA46500}"
+	ProjectSection(SolutionItems) = preProject
+		License.md = License.md
+		Readme.md = Readme.md
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
