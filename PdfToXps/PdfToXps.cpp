@@ -124,7 +124,7 @@ struct CTarget : winrt::implements<CTarget, IPrintDocumentPackageTarget, IXpsDoc
 	winrt::com_ptr<IXpsOMObjectFactory> _factory;
 	IStream* pStream;
 
-	CTarget(IStream* pStream) 
+	CTarget(IStream* pStream)
 		: pStream(pStream), _factory(winrt::create_instance<IXpsOMObjectFactory>(CLSID_XpsOMObjectFactory))
 	{
 		// nop
@@ -162,14 +162,14 @@ struct CTarget : winrt::implements<CTarget, IPrintDocumentPackageTarget, IXpsDoc
 	// IXpsDocumentPackageTarget
 	STDMETHODIMP GetXpsOMPackageWriter(IOpcPartUri* documentSequencePartName, IOpcPartUri* discardControlPartName, IXpsOMPackageWriter** packageWriter)
 	{
-		return _factory->CreatePackageWriterOnStream(pStream, FALSE, XPS_INTERLEAVING_OFF, 
+		return _factory->CreatePackageWriterOnStream(pStream, FALSE, XPS_INTERLEAVING_OFF,
 			documentSequencePartName, nullptr, nullptr, nullptr, discardControlPartName, packageWriter);
 	}
 
 	STDMETHODIMP GetXpsOMFactory(IXpsOMObjectFactory** xpsFactory)
 	{
-		*xpsFactory = _factory.get();
-		return S_OK;
+		// Use QueryInterface since AddRef
+		return _factory->QueryInterface(xpsFactory);
 	}
 
 	STDMETHODIMP GetXpsType(XPS_DOCUMENT_TYPE* documentType)
