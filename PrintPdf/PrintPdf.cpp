@@ -122,7 +122,7 @@ winrt::fire_and_forget main_async()
 	}
 	catch (...)
 	{
-		;
+		__debugbreak();
 	}
 }
 
@@ -200,7 +200,7 @@ void DemoApp::OnPrint(const PrintJob& job)
 		winrt::check_hresult(printControl->AddPage(commandList.get(), D2D1::SizeF(pdfSize.Width, pdfSize.Height), nullptr));
 	}
 
-	printControl->Close();
+	winrt::check_hresult(printControl->Close());
 }
 
 

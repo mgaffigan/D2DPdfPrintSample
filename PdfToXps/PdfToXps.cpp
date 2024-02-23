@@ -29,10 +29,14 @@
 // wic
 #include <wincodec.h>
 
-// Print tickets
+// XPS
+#include <initguid.h>
+#include <xpsobjectmodel_1.h>
 #include <DocumentTarget.h>
-#include <Prntvpt.h>
-#pragma comment(lib, "prntvpt.lib")
+
+// SHCreateStreamOnFile
+#include "Shlwapi.h"
+#pragma comment(lib, "shlwapi.lib")
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Storage;
@@ -40,10 +44,7 @@ using namespace winrt::Windows::Data::Pdf;
 
 struct PrintJob
 {
-	const wchar_t* printerName;
-	const wchar_t* jobName;
-	IStream* printTicket;
-
+	IStream* outStream;
 	IPdfDocument file;
 };
 
@@ -61,68 +62,23 @@ struct DemoApp
 	void OnPrint(const PrintJob& job);
 };
 
-typedef wil::unique_any<HPTPROVIDER, decltype(&::PTCloseProvider), ::PTCloseProvider> unique_hptprovider;
-typedef wil::unique_any<HANDLE, decltype(&::ClosePrinter), ::ClosePrinter> unique_hprinter;
-
-std::wstring GetDefaultPrinterSafe()
-{
-	std::wstring result;
-	winrt::check_hresult(wil::AdaptFixedSizeToAllocatedResult<std::wstring>(
-		result, [&](_Out_writes_(valueLength) PWSTR value, size_t valueLength, _Out_ size_t* valueLengthNeededWithNul) -> HRESULT {
-			DWORD cch = static_cast<DWORD>(valueLength);
-			auto err = ::GetDefaultPrinterW(value, &cch);
-			*valueLengthNeededWithNul = cch;
-			RETURN_LAST_ERROR_IF(err == 0);
-			return S_OK;
-		}));
-	return result;
-}
-
-template <typename TInfo, int TInfoNo>
-wil::unique_hlocal_ptr<TInfo> GetPrinterSafe(HANDLE hPrinter)
-{
-	DWORD cb = 0;
-	GetPrinter(hPrinter, TInfoNo, nullptr, cb, &cb);
-	wil::unique_hlocal_ptr<TInfo> result{ static_cast<TInfo*>(LocalAlloc(0, cb)) };
-	THROW_HR_IF(E_OUTOFMEMORY, result.get() == 0);
-	THROW_LAST_ERROR_IF(!GetPrinter(hPrinter, TInfoNo, (LPBYTE)result.get(), cb, &cb));
-	return result;
-}
-
-winrt::com_ptr<IStream> GetPrintTicketForDevMode(LPWSTR printerName, DEVMODE* devMode)
-{
-	unique_hptprovider provider;
-	winrt::check_hresult(PTOpenProvider(printerName, 1, &provider));
-
-	// Get PrintTicket from DEVMODE.
-	winrt::com_ptr<IStream> ticket;
-	winrt::check_hresult(CreateStreamOnHGlobal(nullptr, TRUE, ticket.put()));
-	winrt::check_hresult(PTConvertDevModeToPrintTicket(provider.get(),
-		devMode->dmSize + devMode->dmDriverExtra, devMode, kPTJobScope, ticket.get()));
-
-	return ticket;
-}
-
 winrt::fire_and_forget main_async()
 {
 	try
 	{
-		auto printerName = GetDefaultPrinterSafe();
-		unique_hprinter printer;
-		THROW_LAST_ERROR_IF(!OpenPrinterW(const_cast<LPWSTR>(printerName.c_str()), &printer, nullptr));
-		auto hDevMode = GetPrinterSafe<PRINTER_INFO_8, 8>(printer.get());
-		auto ticket = GetPrintTicketForDevMode(const_cast<LPWSTR>(printerName.c_str()), hDevMode.get()->pDevMode);
+		winrt::com_ptr<IStream> stream;
+		winrt::check_hresult(::SHCreateStreamOnFile(L"out.xps", STGM_CREATE | STGM_WRITE, stream.put()));
 
 		// file
 		IStorageFile file = co_await StorageFile::GetFileFromPathAsync(L"C:\\dev\\gitroot\\D2DPrintSample\\D2DPrintSample\\example.pdf");
 		PdfDocument pdfDoc = co_await PdfDocument::LoadFromFileAsync(file);
 
 		DemoApp app;
-		app.OnPrint({ printerName.c_str(), L"Example job", ticket.get(), pdfDoc });
+		app.OnPrint({ stream.get(), pdfDoc });
 	}
 	catch (...)
 	{
-		;
+		__debugbreak();
 	}
 }
 
@@ -162,20 +118,74 @@ DemoApp::DemoApp()
 	pWic = winrt::create_instance<IWICImagingFactory2>(CLSID_WICImagingFactory);
 }
 
+// https://stackoverflow.com/a/77972286/138200
+struct CTarget : winrt::implements<CTarget, IPrintDocumentPackageTarget, IXpsDocumentPackageTarget>
+{
+	winrt::com_ptr<IXpsOMObjectFactory> _factory;
+	IStream* pStream;
+
+	CTarget(IStream* pStream) 
+		: pStream(pStream), _factory(winrt::create_instance<IXpsOMObjectFactory>(CLSID_XpsOMObjectFactory))
+	{
+		// nop
+	}
+
+	// IPrintDocumentPackageTarget
+	STDMETHODIMP GetPackageTargetTypes(UINT32* targetCount, GUID** targetTypes)
+	{
+		if (!targetCount || !targetTypes) return E_INVALIDARG;
+		*targetTypes = (GUID*)CoTaskMemAlloc(sizeof(GUID));
+		if (!*targetTypes)
+		{
+			*targetCount = 0;
+			return E_OUTOFMEMORY;
+		}
+
+		*targetCount = 1;
+		**targetTypes = ID_DOCUMENTPACKAGETARGET_MSXPS;
+		return S_OK;
+	}
+
+	STDMETHODIMP GetPackageTarget(REFGUID guidTargetType, REFIID riid, void** ppvTarget)
+	{
+		if (guidTargetType == ID_DOCUMENTPACKAGETARGET_MSXPS)
+			return QueryInterface(riid, ppvTarget);
+
+		return E_FAIL;
+	}
+
+	STDMETHODIMP Cancel()
+	{
+		return S_OK;
+	}
+
+	// IXpsDocumentPackageTarget
+	STDMETHODIMP GetXpsOMPackageWriter(IOpcPartUri* documentSequencePartName, IOpcPartUri* discardControlPartName, IXpsOMPackageWriter** packageWriter)
+	{
+		return _factory->CreatePackageWriterOnStream(pStream, FALSE, XPS_INTERLEAVING_OFF, 
+			documentSequencePartName, nullptr, nullptr, nullptr, discardControlPartName, packageWriter);
+	}
+
+	STDMETHODIMP GetXpsOMFactory(IXpsOMObjectFactory** xpsFactory)
+	{
+		*xpsFactory = _factory.get();
+		return S_OK;
+	}
+
+	STDMETHODIMP GetXpsType(XPS_DOCUMENT_TYPE* documentType)
+	{
+		if (!documentType) return E_INVALIDARG;
+		*documentType = XPS_DOCUMENT_TYPE_XPS;
+		return S_OK;
+	}
+};
+
 void DemoApp::OnPrint(const PrintJob& job)
 {
 	// Initialize the job
+	auto xpsTarget{ winrt::make<CTarget>(job.outStream) };
 	winrt::com_ptr<ID2D1PrintControl> printControl;
-	{
-		// Create a factory for document print job.
-		auto documentTargetFactory = winrt::create_instance<IPrintDocumentPackageTargetFactory>(__uuidof(PrintDocumentPackageTargetFactory));
-		winrt::com_ptr<IPrintDocumentPackageTarget> docTarget;
-		winrt::check_hresult(documentTargetFactory->CreateDocumentPackageTargetForPrintJob(
-			job.printerName, job.jobName, nullptr, job.printTicket, docTarget.put()));
-
-		// Create a new print control linked to the package target.
-		winrt::check_hresult(d2dDevice->CreatePrintControl(pWic.get(), docTarget.get(), nullptr, printControl.put()));
-	}
+	winrt::check_hresult(d2dDevice->CreatePrintControl(pWic.get(), xpsTarget.get(), nullptr, printControl.put()));
 
 	// Open the PDF Document
 	winrt::com_ptr<IPdfRendererNative> pPdfRendererNative;
@@ -200,7 +210,7 @@ void DemoApp::OnPrint(const PrintJob& job)
 		winrt::check_hresult(printControl->AddPage(commandList.get(), D2D1::SizeF(pdfSize.Width, pdfSize.Height), nullptr));
 	}
 
-	printControl->Close();
+	winrt::check_hresult(printControl->Close());
 }
 
 
