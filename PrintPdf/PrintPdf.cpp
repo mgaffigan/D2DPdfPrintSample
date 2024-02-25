@@ -194,7 +194,7 @@ void DemoApp::OnPrint(const PrintJob& job)
 
 		d2dContextForPrint->BeginDraw();
 		winrt::check_hresult(pPdfRendererNative->RenderPageToDeviceContext(winrt::get_unknown(pdfPage), d2dContextForPrint.get(), &renderParams));
-		d2dContextForPrint->EndDraw();
+		winrt::check_hresult(d2dContextForPrint->EndDraw());
 
 		winrt::check_hresult(commandList->Close());
 		winrt::check_hresult(printControl->AddPage(commandList.get(), D2D1::SizeF(pdfSize.Width, pdfSize.Height), nullptr));
