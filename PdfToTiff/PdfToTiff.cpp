@@ -26,17 +26,24 @@
 #include <d2d1_1.h>
 #pragma comment(lib, "d2d1")
 
+// dwrite
+#include <dwrite.h>
+#pragma comment(lib, "dwrite.lib")
+
 // wic
 #include <wincodec.h>
-
-// XPS
-#include <initguid.h>
-#include <xpsobjectmodel_1.h>
-#include <DocumentTarget.h>
 
 // SHCreateStreamOnFile
 #include "Shlwapi.h"
 #pragma comment(lib, "shlwapi.lib")
+
+// VARAINT
+#include <comutil.h>
+#if _DEBUG
+#pragma comment(lib, "comsuppwd.lib")
+#else
+#pragma comment(lib, "comsuppw.lib")
+#endif
 
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Windows::Storage;
@@ -44,6 +51,7 @@ using namespace winrt::Windows::Data::Pdf;
 
 struct PrintJob
 {
+	float dpi;
 	IStream* outStream;
 	IPdfDocument file;
 };
@@ -53,6 +61,7 @@ struct DemoApp
 	winrt::com_ptr<ID3D11Device> d3dDevice;
 	winrt::com_ptr<IDXGIDevice> dxgiDevice;
 	winrt::com_ptr<ID2D1Factory1> d2dFactory;
+	winrt::com_ptr<IDWriteFactory> dwrite;
 	winrt::com_ptr<IWICImagingFactory2> pWic;
 	winrt::com_ptr<ID2D1Device> d2dDevice;
 	winrt::com_ptr<ID2D1DeviceContext> d2dContextForPrint;
@@ -64,22 +73,27 @@ struct DemoApp
 
 winrt::fire_and_forget main_async()
 {
+	auto threadId = GetCurrentThreadId();
+
 	try
 	{
 		winrt::com_ptr<IStream> stream;
-		winrt::check_hresult(::SHCreateStreamOnFile(L"out.xps", STGM_CREATE | STGM_WRITE, stream.put()));
+		winrt::check_hresult(::SHCreateStreamOnFile(L"out.tiff", STGM_CREATE | STGM_WRITE, stream.put()));
 
 		// file
 		IStorageFile file = co_await StorageFile::GetFileFromPathAsync(L"C:\\dev\\gitroot\\D2DPrintSample\\D2DPrintSample\\example.pdf");
 		PdfDocument pdfDoc = co_await PdfDocument::LoadFromFileAsync(file);
 
 		DemoApp app;
-		app.OnPrint({ stream.get(), pdfDoc });
+		app.OnPrint({ 300, stream.get(), pdfDoc });
 	}
 	catch (...)
 	{
 		__debugbreak();
 	}
+
+	std::wcout << L"Done." << std::endl;
+	//PostThreadMessage(threadId, WM_QUIT, 0, 0);
 }
 
 int main()
@@ -114,78 +128,28 @@ DemoApp::DemoApp()
 	winrt::check_hresult(d2dFactory->CreateDevice(dxgiDevice.get(), d2dDevice.put()));
 	winrt::check_hresult(d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, d2dContextForPrint.put()));
 
+	// dwrite
+	winrt::check_hresult(::DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, 
+		// can't use IID_PPV_ARGS because typed as IUnknown** intead of void**
+		__uuidof(IDWriteFactory), reinterpret_cast<::IUnknown**>(&dwrite)));
+
 	// wic
 	pWic = winrt::create_instance<IWICImagingFactory2>(CLSID_WICImagingFactory);
 }
 
-// https://stackoverflow.com/a/77972286/138200
-struct CTarget : winrt::implements<CTarget, IPrintDocumentPackageTarget, IXpsDocumentPackageTarget>
+static void SetProperty(IPropertyBag2* pBag, const wchar_t* optName, _variant_t value)
 {
-	winrt::com_ptr<IXpsOMObjectFactory> _factory;
-	IStream* pStream;
-
-	CTarget(IStream* pStream)
-		: pStream(pStream), _factory(winrt::create_instance<IXpsOMObjectFactory>(CLSID_XpsOMObjectFactory))
-	{
-		// nop
-	}
-
-	// IPrintDocumentPackageTarget
-	STDMETHODIMP GetPackageTargetTypes(UINT32* targetCount, GUID** targetTypes)
-	{
-		if (!targetCount || !targetTypes) return E_INVALIDARG;
-		*targetTypes = (GUID*)CoTaskMemAlloc(sizeof(GUID));
-		if (!*targetTypes)
-		{
-			*targetCount = 0;
-			return E_OUTOFMEMORY;
-		}
-
-		*targetCount = 1;
-		**targetTypes = ID_DOCUMENTPACKAGETARGET_MSXPS;
-		return S_OK;
-	}
-
-	STDMETHODIMP GetPackageTarget(REFGUID guidTargetType, REFIID riid, void** ppvTarget)
-	{
-		if (guidTargetType == ID_DOCUMENTPACKAGETARGET_MSXPS)
-			return QueryInterface(riid, ppvTarget);
-
-		return E_FAIL;
-	}
-
-	STDMETHODIMP Cancel()
-	{
-		return S_OK;
-	}
-
-	// IXpsDocumentPackageTarget
-	STDMETHODIMP GetXpsOMPackageWriter(IOpcPartUri* documentSequencePartName, IOpcPartUri* discardControlPartName, IXpsOMPackageWriter** packageWriter)
-	{
-		return _factory->CreatePackageWriterOnStream(pStream, FALSE, XPS_INTERLEAVING_OFF,
-			documentSequencePartName, nullptr, nullptr, nullptr, discardControlPartName, packageWriter);
-	}
-
-	STDMETHODIMP GetXpsOMFactory(IXpsOMObjectFactory** xpsFactory)
-	{
-		// Use QueryInterface since AddRef
-		return _factory->QueryInterface(xpsFactory);
-	}
-
-	STDMETHODIMP GetXpsType(XPS_DOCUMENT_TYPE* documentType)
-	{
-		if (!documentType) return E_INVALIDARG;
-		*documentType = XPS_DOCUMENT_TYPE_XPS;
-		return S_OK;
-	}
-};
+	PROPBAG2 option = { 0 };
+	option.pstrName = (LPOLESTR)optName;
+	winrt::check_hresult(pBag->Write(1, &option, &value));
+}
 
 void DemoApp::OnPrint(const PrintJob& job)
 {
-	// Initialize the job
-	auto xpsTarget{ winrt::make<CTarget>(job.outStream) };
-	winrt::com_ptr<ID2D1PrintControl> printControl;
-	winrt::check_hresult(d2dDevice->CreatePrintControl(pWic.get(), xpsTarget.get(), nullptr, printControl.put()));
+	// Enc
+	winrt::com_ptr<IWICBitmapEncoder> encoder;
+	winrt::check_hresult(pWic->CreateEncoder(GUID_ContainerFormatTiff, nullptr, encoder.put()));
+	winrt::check_hresult(encoder->Initialize(job.outStream, WICBitmapEncoderNoCache));
 
 	// Open the PDF Document
 	winrt::com_ptr<IPdfRendererNative> pPdfRendererNative;
@@ -195,6 +159,7 @@ void DemoApp::OnPrint(const PrintJob& job)
 	// Write pages
 	for (uint32_t pageIndex = 0; pageIndex < job.file.PageCount(); pageIndex++)
 	{
+		// write page
 		IPdfPage pdfPage = job.file.GetPage(pageIndex);
 		auto pdfSize = pdfPage.Size();
 
@@ -204,13 +169,31 @@ void DemoApp::OnPrint(const PrintJob& job)
 
 		d2dContextForPrint->BeginDraw();
 		winrt::check_hresult(pPdfRendererNative->RenderPageToDeviceContext(winrt::get_unknown(pdfPage), d2dContextForPrint.get(), &renderParams));
-		d2dContextForPrint->EndDraw();
+		winrt::check_hresult(d2dContextForPrint->EndDraw());
 
 		winrt::check_hresult(commandList->Close());
-		winrt::check_hresult(printControl->AddPage(commandList.get(), D2D1::SizeF(pdfSize.Width, pdfSize.Height), nullptr));
+
+		// wic frame
+		winrt::com_ptr<IWICBitmapFrameEncode> frame;
+		IPropertyBag2* encParams = nullptr;
+		winrt::check_hresult(encoder->CreateNewFrame(frame.put(), &encParams));
+		SetProperty(encParams, L"TiffCompressionMethod", (BYTE)WICTiffCompressionZIP);
+		winrt::check_hresult(frame->Initialize(encParams));
+
+		winrt::com_ptr<IWICImageEncoder> imageEnc;
+		winrt::check_hresult(pWic->CreateImageEncoder(d2dDevice.get(), imageEnc.put()));
+		WICImageParameters imageParams = {};
+		imageParams.DpiX = imageParams.DpiY = job.dpi;
+		imageParams.PixelWidth = pdfSize.Width * job.dpi / 96.0;
+		imageParams.PixelHeight = pdfSize.Height * job.dpi / 96.0;
+		imageParams.PixelFormat.format = DXGI_FORMAT_B8G8R8A8_UNORM;
+		imageParams.PixelFormat.alphaMode = D2D1_ALPHA_MODE_PREMULTIPLIED;
+		winrt::check_hresult(imageEnc->WriteFrame(commandList.get(), frame.get(), &imageParams));
+
+		winrt::check_hresult(frame->Commit());
 	}
 
-	winrt::check_hresult(printControl->Close());
+	winrt::check_hresult(encoder->Commit());
 }
 
 
