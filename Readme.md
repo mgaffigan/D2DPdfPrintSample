@@ -6,6 +6,8 @@ No third party apps required - no additional licenses.  Only Windows.
 
 PDF's are printed as vectors.  Text is preserved.  Minimal testing done - demo only, not production ready.
 
+For a production C# version, consider [Rmg.PdfPrinting](https://github.com/mgaffigan/Rmg.PdfPrinting) ([Nuget](https://www.nuget.org/packages/Rmg.PdfPrinting)).
+
 ## Key steps
 
 1. Reference/initialize winrt (e.g.: `winrt::init_apartment(winrt::apartment_type::single_threaded);`)
