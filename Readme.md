@@ -4,7 +4,7 @@ Example of using [Windows.Data.Pdf](https://learn.microsoft.com/en-us/uwp/api/wi
 
 No third party apps required - no additional licenses.  Only Windows.
 
-PDF's are printed as bitmaps.  Text is preserved.  Minimal testing done - demo only, not production ready.
+PDF's are printed as vectors.  Text is preserved.  Minimal testing done - demo only, not production ready.
 
 ## Key steps
 
